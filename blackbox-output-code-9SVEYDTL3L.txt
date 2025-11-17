@@ -1,0 +1,164 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:stripe_payment/stripe_payment.dart'; // For payments
+
+void main() {
+  StripePayment.setOptions(StripeOptions(
+    publishableKey: "pk_test_YOUR_STRIPE_PUBLISHABLE_KEY", // Replace with your Stripe key
+    merchantId: "Test", // For Apple Pay, optional
+    androidPayMode: 'test', // Use 'production' for live
+  ));
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (context) => CartModel(),
+      child: MaterialApp(
+        title: 'Kids Toys Store',
+        theme: ThemeData(primarySwatch: Colors.blue),
+        home: HomeScreen(),
+        routes: {
+          '/cart': (context) => CartScreen(),
+        },
+      ),
+    );
+  }
+}
+
+// Toy Model
+class Toy {
+  final String name;
+  final String description;
+  final double price;
+  final String imageUrl;
+
+  Toy({required this.name, required this.description, required this.price, required this.imageUrl});
+}
+
+// Cart Model (using Provider for state management)
+class CartModel extends ChangeNotifier {
+  List<Toy> _items = [];
+
+  List<Toy> get items => _items;
+
+  double get totalPrice => _items.fold(0, (sum, item) => sum + item.price);
+
+  void add(Toy toy) {
+    _items.add(toy);
+    notifyListeners();
+  }
+
+  void remove(Toy toy) {
+    _items.remove(toy);
+    notifyListeners();
+  }
+}
+
+// Home Screen: Grid of 130 Toys
+class HomeScreen extends StatelessWidget {
+  // List of 130 toys (expand this with real data)
+  final List<Toy> toys = List.generate(130, (index) => Toy(
+    name: 'Toy ${index + 1}: Fun Item ${index + 1}',
+    description: 'A fun toy for kids, perfect for playtime.',
+    price: 10.0 + index * 0.5, // Vary prices
+    imageUrl: 'https://source.unsplash.com/featured/?toy-${index % 10}', // Placeholder images; replace with your URLs
+  ));
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Kids Toys Store'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.shopping_cart),
+            onPressed: () => Navigator.pushNamed(context, '/cart'),
+          ),
+        ],
+      ),
+      body: GridView.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.75,
+        ),
+        itemCount: toys.length,
+        itemBuilder: (context, index) {
+          final toy = toys[index];
+          return Card(
+            child: Column(
+              children: [
+                Image.network(toy.imageUrl, height: 100, fit: BoxFit.cover),
+                Text(toy.name, style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(toy.description),
+                Text('\$${toy.price.toStringAsFixed(2)}'),
+                ElevatedButton(
+                  onPressed: () {
+                    Provider.of<CartModel>(context, listen: false).add(toy);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${toy.name} added to cart!')),
+                    );
+                  },
+                  child: Text('Add to Cart'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Cart Screen
+class CartScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Shopping Cart')),
+      body: Consumer<CartModel>(
+        builder: (context, cart, child) {
+          return Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  itemCount: cart.items.length,
+                  itemBuilder: (context, index) {
+                    final toy = cart.items[index];
+                    return ListTile(
+                      leading: Image.network(toy.imageUrl, width: 50, fit: BoxFit.cover),
+                      title: Text(toy.name),
+                      subtitle: Text('\$${toy.price.toStringAsFixed(2)}'),
+                      trailing: IconButton(
+                        icon: Icon(Icons.remove),
+                        onPressed: () => cart.remove(toy),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Text('Total: \$${cart.totalPrice.toStringAsFixed(2)}', style: TextStyle(fontSize: 20)),
+              ElevatedButton(
+                onPressed: () async {
+                  // Stripe Payment
+                  var paymentMethod = await StripePayment.paymentRequestWithCardForm(
+                    CardFormPaymentRequest(),
+                  );
+                  if (paymentMethod != null) {
+                    // Process payment (in a real app, send to your server)
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Payment successful!')),
+                    );
+                  }
+                },
+                child: Text('Pay Now'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
